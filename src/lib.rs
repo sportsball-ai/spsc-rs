@@ -39,6 +39,8 @@ struct State<T> {
     recv_waker: AtomicWaker,
 }
 
+unsafe impl<T> Sync for State<T> {}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum TryRecvError {
     Empty,
@@ -108,6 +110,11 @@ impl<T> State<T> {
         }
     }
 
+    fn is_receiver_closed(&self) -> bool {
+        let ring_state = self.ring_state.load(Ordering::SeqCst);
+        (ring_state & RING_STATE_RECEIVER_CLOSED_FLAG) != 0
+    }
+
     /// # Safety
     /// This function must not be called by more than one thread at a time.
     unsafe fn try_send(&self, value: T) -> Result<(), TrySendError<T>> {
@@ -160,6 +167,10 @@ pub struct Sender<T> {
 }
 
 impl<T> Sender<T> {
+    pub fn is_closed(&self) -> bool {
+        self.state.is_receiver_closed()
+    }
+
     pub fn try_send(&self, value: T) -> Result<(), TrySendError<T>> {
         unsafe { self.state.try_send(value) }
     }
