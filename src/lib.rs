@@ -39,7 +39,9 @@ struct State<T> {
     recv_waker: AtomicWaker,
 }
 
-unsafe impl<T> Sync for State<T> {}
+// UnsafeCell is !Sync, but as long as T is Send, we can use the channel to communicate between
+// threads.
+unsafe impl<T: Send> Sync for State<T> {}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum TryRecvError {
@@ -234,19 +236,20 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_async() {
+    async fn test_recv() {
         let (tx, rx) = channel::<i32>(4);
 
-        assert_eq!(tx.try_send(1), Ok(()));
-        assert_eq!(tx.try_send(2), Ok(()));
-        assert_eq!(tx.try_send(3), Ok(()));
-        assert_eq!(tx.try_send(4), Ok(()));
+        std::thread::spawn(move || {
+            assert_eq!(tx.try_send(1), Ok(()));
+            assert_eq!(tx.try_send(2), Ok(()));
+            assert_eq!(tx.try_send(3), Ok(()));
+            assert_eq!(tx.try_send(4), Ok(()));
+        });
+
         assert_eq!(rx.recv().await, Some(1));
         assert_eq!(rx.recv().await, Some(2));
         assert_eq!(rx.recv().await, Some(3));
         assert_eq!(rx.recv().await, Some(4));
-
-        core::mem::drop(tx);
         assert_eq!(rx.recv().await, None);
     }
 }
