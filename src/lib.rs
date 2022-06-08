@@ -55,7 +55,7 @@ pub enum TrySendError<T> {
 
 impl<T> State<T> {
     fn new(capacity: usize) -> Self {
-        if capacity * 2 > (RING_STATE_CURSOR_BITS << 1) - 1 {
+        if capacity * 2 > (1 << RING_STATE_CURSOR_BITS) - 1 {
             panic!("capacity too large: {}", capacity);
         }
         let mut ring_buffer = Vec::with_capacity(capacity);
