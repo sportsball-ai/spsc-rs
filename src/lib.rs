@@ -78,6 +78,7 @@ impl<T> State<T> {
     fn sender_closed(&self) {
         self.ring_state
             .fetch_or(RING_STATE_SENDER_CLOSED_FLAG, Ordering::SeqCst);
+        self.recv_waker.wake();
     }
 
     /// # Safety
@@ -208,6 +209,7 @@ impl<T> Drop for Receiver<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::{Duration, Instant};
 
     #[test]
     fn test_channel() {
@@ -251,5 +253,23 @@ mod tests {
         assert_eq!(rx.recv().await, Some(3));
         assert_eq!(rx.recv().await, Some(4));
         assert_eq!(rx.recv().await, None);
+    }
+
+    #[tokio::test]
+    async fn test_drop_during_receive() {
+        let (tx, rx) = channel::<i32>(4);
+
+        std::thread::spawn(move || {
+            // sleep a little so hopefully the receive will be in progress before we drop
+            std::thread::sleep(Duration::from_millis(500));
+            core::mem::drop(tx);
+        });
+
+        let start = Instant::now();
+        assert_eq!(
+            tokio::time::timeout(Duration::from_secs(20), rx.recv()).await,
+            Ok(None)
+        );
+        assert!(start.elapsed() < Duration::from_secs(5));
     }
 }
